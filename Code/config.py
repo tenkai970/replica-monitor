@@ -16,7 +16,7 @@ class SourceConfig(BaseModel):
     database: str
     table: str
     datetime_column: str | None = None
-    final: bool = False
+    final: bool = True
 
     @property
     def full_name(self) -> str:
@@ -63,18 +63,18 @@ def load_config(path: str | Path = "config.yaml") -> DatabaseConfig:
     config_path = Path(path)
 
     if not config_path.exists():
-        raise FileNotFoundError(f"Не найден файл конфигурации: {config_path}")
+        raise FileNotFoundError(f"\nНе найден файл конфигурации: {config_path}")
 
     with config_path.open("r", encoding="utf-8") as file:
         raw_config = yaml.safe_load(file)
 
     if not raw_config:
-        raise ValueError(f"Файл конфигурации пустой: {config_path}")
+        raise ValueError(f"\nФайл конфигурации пустой: {config_path}")
 
     try:
         return DatabaseConfig.model_validate(raw_config)
     except ValidationError as error:
-        raise ValueError(f"Ошибка валидации конфигурации {config_path}:\n{error}") from error
+        raise ValueError(f"\nОшибка валидации конфигурации {config_path}:\n{error}") from error
 
 
 class SourceConfig1:
@@ -85,4 +85,4 @@ class SourceConfig1:
 if __name__ == "__main__":
     load_env()
     config = load_config()
-    print(config.model_config)
+    print(config)

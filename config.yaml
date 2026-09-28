@@ -4,12 +4,13 @@ tables:
       type: mysql
       database: intranet
       table: hotels_zakaz
-      datetime_column: __source_ts_ms
+      datetime_column: date
     replica:
       type: clickhouse
       database: datalensmariadb
       table: hotels_zakaz
-      datetime_column: __source_ts_ms
+      datetime_column: date
+      final: 1
     strategy:
       row_count:  1
       lag_check: 0

@@ -168,7 +168,7 @@ class ClickHouseConn(DBcon):
                 query=qbody,
                 parameters=params or {}
             )
-            logger.info('Shape: %s', query.shape)
+            # logger.info('Shape: %s', query.shape)
         except Exception as Ex:
             logger.error('Ошибка выполнения запроса!\n%s\n', Ex)
             return None
@@ -182,7 +182,7 @@ class ClickHouseConn(DBcon):
             None
         """
         if self.conn is None:
-            logger.warning('Нет активного соединения с %s для закрытия', self.prefix[:-1])
+            #logger.warning('Нет активного соединения с %s для закрытия', self.prefix[:-1])
             return
         try:
             self.conn.close()
@@ -312,7 +312,7 @@ class MySQLConn(DBcon):
             return None
         try:
             query = pd.read_sql(sql = sqlalchemy.text(qbody), con = self.engine, params=params or {})
-            logger.info('Shape: %s', query.shape)
+            # logger.info('Shape: %s', query.shape)
         except Exception as Ex:
             logger.error('Ошибка выполнения запроса!\n%s\n', Ex)
             return None
@@ -326,7 +326,7 @@ class MySQLConn(DBcon):
             None
         """
         if self.engine is None:
-            logger.warning('Нет активного соединения с %s для закрытия', self.prefix[:-1])
+            #logger.warning('Нет активного соединения с %s для закрытия', self.prefix[:-1])
             return
         try:
             self.engine.dispose()

@@ -2,6 +2,7 @@ import colorlog
 import logging
 import sys
 
+
 def create_logger(name: str = __name__) -> logging.Logger:
     """
     Создаёт и настраивает экземпляр логгера.
