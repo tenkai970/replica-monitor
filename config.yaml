@@ -1,0 +1,17 @@
+tables:
+  - name: hotels_zakaz
+    primary:
+      type: mysql
+      database: intranet
+      table: hotels_zakaz
+      datetime_column: __source_ts_ms
+    replica:
+      type: clickhouse
+      database: datalensmariadb
+      table: hotels_zakaz
+      datetime_column: __source_ts_ms
+    strategy:
+      row_count:  1
+      lag_check: 0
+    max_row_diff: 1000
+    max_lag_minutes: 60
