@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Dependencies / build
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local configs
+config.local.yaml
+config.local.yml
+tables.local.yaml
+tables.local.yml
+
+# Logs
+logs/
+*.log
+
+# Runtime outputs
+reports/
+output/
+outputs/
+tmp/
+temp/
+
+# Monitoring state / cache
+.state/
+cache/
+*.sqlite
+*.sqlite3
+*.db
+
+# Generated result files
+*.csv
+*.tsv
+*.xlsx
+*.html
+*.json
+
+# Keep examples if needed
+!examples/**/*.csv
+!examples/**/*.json
+!reports/.gitkeep
+!outputs/.gitkeep
