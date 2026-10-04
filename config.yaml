@@ -16,3 +16,20 @@ tables:
       lag_check: 0
     max_row_diff: 1000
     max_lag_minutes: 60
+
+  - name: order_stat
+    primary:
+      type: mysql
+      database: intranet
+      table: order_stat
+      datetime_column: null
+    replica:
+      type: clickhouse
+      database: datalensmariadb
+      table: order_stat
+      datetime_column: null
+    strategy:
+      row_count:  1
+      lag_check: 0
+    max_row_diff: 1000
+    max_lag_minutes: 60

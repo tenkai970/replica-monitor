@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 
 class SourceConfig(BaseModel):
@@ -17,6 +17,13 @@ class SourceConfig(BaseModel):
     table: str
     datetime_column: str | None = None
     final: bool = True
+
+    @model_validator(mode='after')
+    def normalize_final_by_source_type(self):
+        if self.type != "clickhouse":
+            self.final = False
+
+        return self
 
     @property
     def full_name(self) -> str:
@@ -77,12 +84,11 @@ def load_config(path: str | Path = "config.yaml") -> DatabaseConfig:
         raise ValueError(f"\nОшибка валидации конфигурации {config_path}:\n{error}") from error
 
 
-class SourceConfig1:
-    type: str
-    database: str
-    table: str
-
 if __name__ == "__main__":
     load_env()
     config = load_config()
-    print(config)
+    for elem in config.tables:
+        print(elem.name)
+        print(elem.primary)
+        print(elem.replica)
+

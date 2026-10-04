@@ -12,7 +12,7 @@ class SourceMetrics(BaseModel):
     """
     Метрики одной таблицы в одной базе.
     """
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra='forbid')
 
     source_type: str
     database: str
@@ -72,33 +72,9 @@ class MetricCollector:
             source_type=source.type,
             database=source.database,
             table=source.table,
-            row_count=_to_int_or_none(row.get("row_count")),
+            row_count=row.get("row_count"),
             max_datetime=row.get("max_datetime"),
         )
-
-    def _check_datetime_column_exists(self, source: SourceConfig, connection: DBcon) -> None:
-        if not source.datetime_column:
-            return
-
-        query, params = build_column_exists_query(source)
-        result = connection.query(query, params=params)
-
-        if result is None:
-            raise RuntimeError(
-                f"\nНе удалось проверить колонку {source.datetime_column} для {source.full_name}"
-            )
-
-        if result.empty:
-            raise RuntimeError(
-                f"\nПустой результат проверки колонки {source.datetime_column} для {source.full_name}"
-            )
-
-        column_exists = _to_int_or_none(result.iloc[0].to_dict().get("column_exists"))
-
-        if not column_exists:
-            raise ValueError(
-                f"\nКолонка {source.datetime_column} не найдена в таблице {source.full_name}"
-            )
 
     def collect_table_metrics(self, table: TableConfig) -> TableMetrics:
         return TableMetrics(
@@ -116,12 +92,30 @@ class MetricCollector:
 
         self._connections.clear()
 
+    @staticmethod
+    def _check_datetime_column_exists(source: SourceConfig, connection: DBcon) -> None:
+        if not source.datetime_column:
+            return
 
-def _to_int_or_none(value: Any) -> int | None:
-    if value is None or pd.isna(value):
-        return None
+        query, params = build_column_exists_query(source)
+        result = connection.query(query, params=params)
 
-    return int(value)
+        if result is None:
+            raise RuntimeError(
+                f"\nНе удалось проверить колонку {source.datetime_column} для {source.full_name}"
+            )
+
+        if result.empty:
+            raise RuntimeError(
+                f"\nПустой результат проверки колонки {source.datetime_column} для {source.full_name}"
+            )
+        exists = result.iloc[0].to_dict().get("column_exists")
+        column_exists = None if exists is None or pd.isna(exists) else exists
+
+        if not column_exists:
+            raise ValueError(
+                f"\nКолонка {source.datetime_column} не найдена в таблице {source.full_name}"
+            )
 
 
 if __name__ == "__main__":
@@ -131,6 +125,8 @@ if __name__ == "__main__":
     try:
         metrics = collector.collect_all(config.tables)
         for table_metrics in metrics:
-            print(table_metrics.model_dump())
+            print(table_metrics.table_name)
+            for table in [table_metrics.primary,table_metrics.replica]:
+                print(table)
     finally:
         collector.close_all()
