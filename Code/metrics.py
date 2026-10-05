@@ -3,7 +3,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
-from Code.config import SourceConfig, TableConfig, load_config
+from Code.config import SourceConfig, TableConfig,StrategyConfig,RulesConfig,load_config
 from Code.db import ClickHouseConn, DBcon, MySQLConn
 from Code.sql_builder import build_column_exists_query, build_metrics_query
 
@@ -24,10 +24,15 @@ class SourceMetrics(BaseModel):
 class TableMetrics(BaseModel):
     """
     Метрики primary и replica для одной настройки таблицы.
+    Вместе с правилами проверки
     """
+    model_config = ConfigDict(extra="forbid")
+    
     table_name: str
-    primary: SourceMetrics
-    replica: SourceMetrics
+    primary:  SourceMetrics
+    replica:  SourceMetrics
+    strategy: StrategyConfig
+    rules:    RulesConfig
 
 
 class MetricCollector:
@@ -81,6 +86,8 @@ class MetricCollector:
             table_name=table.name,
             primary=self.collect_source_metrics(table.primary),
             replica=self.collect_source_metrics(table.replica),
+            strategy=table.strategy,
+            rules=table.rules,
         )
 
     def collect_all(self, tables: list[TableConfig]) -> list[TableMetrics]:
@@ -125,8 +132,10 @@ if __name__ == "__main__":
     try:
         metrics = collector.collect_all(config.tables)
         for table_metrics in metrics:
-            print(table_metrics.table_name)
+            print('\n',table_metrics.table_name)
             for table in [table_metrics.primary,table_metrics.replica]:
                 print(table)
+            print (table_metrics.strategy)
+            print (table_metrics.rules)
     finally:
         collector.close_all()

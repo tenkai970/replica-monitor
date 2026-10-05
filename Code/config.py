@@ -39,6 +39,14 @@ class StrategyConfig(BaseModel):
     row_count: bool = True
     lag_check: bool = False
 
+class RulesConfig(BaseModel):
+    """
+    Погрещности, допустимые для сравнения таблиц.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    max_row_diff: int = 0
+    max_lag_seconds: int = 0
 
 class TableConfig(BaseModel):
     """
@@ -47,12 +55,10 @@ class TableConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    primary: SourceConfig
-    replica: SourceConfig
+    primary:  SourceConfig
+    replica:  SourceConfig
     strategy: StrategyConfig = Field(default_factory=StrategyConfig)
-    max_row_diff: int = 0
-    max_lag_minutes: int | None = None
-
+    rules:     RulesConfig
 
 class DatabaseConfig(BaseModel):
     """
@@ -88,7 +94,8 @@ if __name__ == "__main__":
     load_env()
     config = load_config()
     for elem in config.tables:
-        print(elem.name)
-        print(elem.primary)
-        print(elem.replica)
+        print(elem)
+        # print(elem.name)
+        # print(elem.primary)
+        # print(elem.replica)
 
