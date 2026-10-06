@@ -32,6 +32,10 @@ def build_metrics_query(source: SourceConfig) -> str:
         datetime_column = quote_identifier(source.datetime_column)
         metrics.append(f"MAX({datetime_column}) AS max_datetime")
 
+    if source.last_update_column:
+        last_update_column = quote_identifier(source.last_update_column)
+        metrics.append(f"MAX({last_update_column}) AS update_datetime")
+
     table_name = build_table_name(source)
     final_modifier = " FINAL" if source.type == "clickhouse" and source.final else ""
     metrics_sql = ",\n    ".join(metrics)

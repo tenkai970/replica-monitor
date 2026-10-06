@@ -19,6 +19,7 @@ class SourceMetrics(BaseModel):
     table: str
     row_count: int | None = None
     max_datetime: Any = None
+    update_datetime: Any = None
 
 
 class TableMetrics(BaseModel):
@@ -79,6 +80,7 @@ class MetricCollector:
             table=source.table,
             row_count=row.get("row_count"),
             max_datetime=row.get("max_datetime"),
+            update_datetime=row.get("update_datetime")
         )
 
     def collect_table_metrics(self, table: TableConfig) -> TableMetrics:

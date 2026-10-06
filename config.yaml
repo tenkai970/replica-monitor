@@ -10,13 +10,16 @@ tables:
       database: datalensmariadb
       table: hotels_zakaz
       datetime_column: date
+      last_update_column: date
       final: 1
     strategy:
       row_count:  1
       lag_check: 0
+      last_update: 1
     rules:
       max_row_diff: 1000
-      max_lag_minutes: 60
+      max_lag_seconds: 60
+      last_update_seconds: 86400
 
   - name: order_stat
     primary:
@@ -32,6 +35,8 @@ tables:
     strategy:
       row_count:  1
       lag_check: 0
+      last_update: 0
     rules:
       max_row_diff: 1000
       max_lag_seconds: 60
+      last_update_seconds: 0

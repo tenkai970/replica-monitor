@@ -16,6 +16,7 @@ class SourceConfig(BaseModel):
     database: str
     table: str
     datetime_column: str | None = None
+    last_update_column: str | None = None
     final: bool = True
 
     @model_validator(mode='after')
@@ -38,15 +39,17 @@ class StrategyConfig(BaseModel):
 
     row_count: bool = True
     lag_check: bool = False
+    last_update: bool = False
 
 class RulesConfig(BaseModel):
     """
-    Погрещности, допустимые для сравнения таблиц.
+    Погрешности, допустимые для сравнения таблиц.
     """
     model_config = ConfigDict(extra="forbid")
 
     max_row_diff: int = 0
     max_lag_seconds: int = 0
+    last_update_seconds: int = 0
 
 class TableConfig(BaseModel):
     """
