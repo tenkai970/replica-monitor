@@ -5,7 +5,21 @@ from pydantic import BaseModel, ConfigDict
 
 from Code.config import SourceConfig, TableConfig,StrategyConfig,RulesConfig,load_config
 from Code.db import ClickHouseConn, DBcon, MySQLConn
+from Code.logger import create_logger
 from Code.sql_builder import build_column_exists_query, build_metrics_query
+
+
+logger = create_logger(__name__)
+
+
+class MetricCollectionError(RuntimeError):
+    """
+    Ошибка сбора метрик с путём к полю или блоку YAML-конфига.
+    """
+    def __init__(self, config_path: str, message: str):
+        self.config_path = config_path
+        self.message = message.strip()
+        super().__init__(f"\nYAML {config_path}: {self.message}")
 
 
 class SourceMetrics(BaseModel):
@@ -42,6 +56,7 @@ class MetricCollector:
     """
     def __init__(self):
         self._connections: dict[tuple[str, str], DBcon] = {}
+        self.errors: dict[str, str] = {}
 
     def _get_connection(self, source: SourceConfig) -> DBcon:
         connection_key = (source.type, source.database)
@@ -84,16 +99,52 @@ class MetricCollector:
         )
 
     def collect_table_metrics(self, table: TableConfig) -> TableMetrics:
+        sources = {}
+        for source_name in ("primary", "replica"):
+            source = getattr(table, source_name)
+            try:
+                sources[source_name] = self.collect_source_metrics(source)
+            except MetricCollectionError as error:
+                raise MetricCollectionError(
+                    f"{source_name}.{error.config_path}", error.message
+                ) from error
+            except Exception as error:
+                raise MetricCollectionError(source_name, str(error)) from error
+
         return TableMetrics(
             table_name=table.name,
-            primary=self.collect_source_metrics(table.primary),
-            replica=self.collect_source_metrics(table.replica),
+            primary=sources["primary"],
+            replica=sources["replica"],
             strategy=table.strategy,
             rules=table.rules,
         )
 
     def collect_all(self, tables: list[TableConfig]) -> list[TableMetrics]:
-        return [self.collect_table_metrics(table) for table in tables]
+        """
+        Собирает метрики всех таблиц, продолжая обход при ошибках.
+        Ошибки последнего запуска сохраняются в errors по имени таблицы.
+        """
+        metrics = []
+        self.errors.clear()
+
+        for index, table in enumerate(tables):
+            try:
+                table_metrics = self.collect_table_metrics(table)
+            except Exception as error:
+                config_path = f"tables[{index}]"
+                if isinstance(error, MetricCollectionError):
+                    config_path = f"{config_path}.{error.config_path}"
+                    message = error.message
+                else:
+                    message = str(error).strip()
+                comment = f"YAML {config_path}: {message}"
+                self.errors[table.name] = comment
+                logger.error("%s: ошибка сбора метрик: %s", table.name, comment)
+                continue
+
+            metrics.append(table_metrics)
+
+        return metrics
 
     def close_all(self) -> None:
         for connection in self._connections.values():
@@ -122,8 +173,9 @@ class MetricCollector:
         column_exists = None if exists is None or pd.isna(exists) else exists
 
         if not column_exists:
-            raise ValueError(
-                f"\nКолонка {source.datetime_column} не найдена в таблице {source.full_name}"
+            raise MetricCollectionError(
+                "datetime_column",
+                f"Колонка {source.datetime_column} не найдена в таблице {source.full_name}"
             )
 
 

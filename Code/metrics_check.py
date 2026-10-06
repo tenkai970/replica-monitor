@@ -181,3 +181,27 @@ class MetricsComparser():
 
         return results
 
+
+if __name__ == "__main__":
+    from Code.config import load_config
+    from Code.metrics import MetricCollector
+
+    config = load_config()
+    collector = MetricCollector()
+
+    try:
+        metrics = collector.collect_all(config.tables)
+        comparser = MetricsComparser(metrics)
+        results = comparser.compare_all()
+
+        for result in results:
+            print('\n', result.table_name)
+            print(result)
+
+        logger.info(
+            "Проверено таблиц: %s из %s. Ошибок сбора: %s",
+            len(results), len(config.tables), len(collector.errors)
+        )
+    finally:
+        collector.close_all()
+
