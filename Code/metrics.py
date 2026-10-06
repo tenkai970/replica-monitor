@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
@@ -54,20 +54,32 @@ class MetricCollector:
     """
     Собирает метрики через существующие классы подключений из Code.db.
     """
-    def __init__(self):
-        self._connections: dict[tuple[str, str], DBcon] = {}
+    def __init__(self,
+        msq_conn: MySQLConn = None,
+        click_conn: ClickHouseConn = None):
+
+        self.mysql_conn = msq_conn
+        self.clickhouse_conn = click_conn
+        self._connections: dict[str, DBcon] = {}
         self.errors: dict[str, str] = {}
 
     def _get_connection(self, source: SourceConfig) -> DBcon:
-        connection_key = (source.type, source.database)
+        connection_key = source.type
 
         if connection_key in self._connections:
             return self._connections[connection_key]
 
         if source.type == "mysql":
-            connection = MySQLConn(dbname=source.database)
+            if self.mysql_conn:
+                connection = self.mysql_conn
+            else:
+                connection = MySQLConn()
+
         elif source.type == "clickhouse":
-            connection = ClickHouseConn(dbname=source.database)
+            if self.clickhouse_conn:
+                connection = self.clickhouse_conn
+            else:
+                connection = ClickHouseConn()
         else:
             raise ValueError(f"\nНеподдерживаемый тип источника: {source.type}")
 

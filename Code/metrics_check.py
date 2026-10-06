@@ -20,9 +20,14 @@ class CheckResult(BaseModel):
     row_diff: int | None = None
     primary_max_datetime: Any = None
     replica_max_datetime: Any = None
+    primary_last_update: Any = None
+    replica_last_update: Any = None
 
 
 class MetricsComparser():
+    '''
+    Основной класс проверки метрик по таблицам
+    '''
     def __init__(self, metrics: list[TableMetrics]):
         self.metrics = metrics
 
@@ -94,7 +99,7 @@ class MetricsComparser():
         if strategy.row_count:
             if primary.row_count is None or replica.row_count is None:
                 status = "ERROR"
-                comment = "Не удалось проверить количество строк: нет метрик"
+                comment = "Не вернулось количество строк по таблицам"
                 logger.error("%s: %s", table_name, comment)
                 comments.append(comment)
             else:
@@ -109,7 +114,7 @@ class MetricsComparser():
         if strategy.lag_check:
             if pd.isna(primary.max_datetime) or pd.isna(replica.max_datetime):
                 status = "ERROR"
-                comment = "Не удалось проверить отставание: нет даты в метриках"
+                comment = "Не вернулось отставание по таблицам"
                 logger.error("%s: %s", table_name, comment)
                 comments.append(comment)
             else:
@@ -133,12 +138,7 @@ class MetricsComparser():
                     logger.error("%s: %s", table_name, comment)
                     comments.append(comment)
 
-            if pd.isna(replica.update_datetime):
-                status = "ERROR"
-                comment = "Не удалось проверить обновление: нет даты в метриках реплики"
-                logger.error("%s: %s", table_name, comment)
-                comments.append(comment)
-            else:
+            if not pd.isna(primary.update_datetime):
                 update_rule = self._check_table_update(
                     replica, rules.last_update_seconds
                 )
@@ -167,6 +167,8 @@ class MetricsComparser():
             row_diff=row_diff,
             primary_max_datetime=primary.max_datetime,
             replica_max_datetime=replica.max_datetime,
+            primary_last_update=primary.update_datetime,
+            replica_last_update=replica.update_datetime
         )
 
     

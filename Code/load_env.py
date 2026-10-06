@@ -3,7 +3,7 @@ from   Code.logger import create_logger
 import os, sys
 
 logger = create_logger()
-REQUIRED_ENV_VARS = ['ROOT_DIR'] # Список обязательных переменных окружения
+REQUIRED_ENV_VARS = ['ROOT_DIR', 'CONFIG_PATH'] # Список обязательных переменных окружения
 
 def _check_env_vars(keys: list[str]) -> None:
     """
