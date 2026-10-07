@@ -1,5 +1,6 @@
 import pandas as pd
 import time
+from numbers import Number
 
 from typing import Literal, Any
 from pydantic import BaseModel, ConfigDict
@@ -32,6 +33,21 @@ class MetricsComparser():
         self.metrics = metrics
 
     @staticmethod
+    def _normalize_datetime(value) -> pd.Timestamp:
+        """Даты без часового пояса считаются UTC. Числовой формат не угадываем."""
+        if isinstance(value, Number):
+            raise ValueError("Числовая дата не поддерживается: передайте datetime или строку даты")
+        try:
+            value = pd.to_datetime(value, utc=True, errors="coerce")
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError("Некорректная дата") from error
+        if not isinstance(value, pd.Timestamp) or pd.isna(value):
+            raise ValueError("Дата отсутствует или имеет некорректный формат")
+        # if value.timestamp() > time.time():
+        #     raise ValueError("Дата находится в будущем")
+        return value
+
+    @staticmethod
     def _check_rows(
             primary:SourceMetrics,
             replica:SourceMetrics,
@@ -57,8 +73,8 @@ class MetricsComparser():
         """
         Проверка мэтча по общему столбцу даты (max_lag_seconds)
         """
-        primary_dt = pd.to_datetime(primary.max_datetime, utc=True)
-        replica_dt = pd.to_datetime(replica.max_datetime, utc=True)
+        primary_dt = MetricsComparser._normalize_datetime(primary.max_datetime)
+        replica_dt = MetricsComparser._normalize_datetime(replica.max_datetime)
         lag = (primary_dt - replica_dt).total_seconds()
         if lag > max_lag_seconds:
             return False
@@ -73,7 +89,7 @@ class MetricsComparser():
         """
         Проверка на обновление таблицы за последние n-секунд (last_update_seconds)
         """
-        table_dt = pd.to_datetime(table.update_datetime, utc=True).timestamp()
+        table_dt = MetricsComparser._normalize_datetime(table.update_datetime).timestamp()
         now_sec = time.time()
         min_level = now_sec - last_update_seconds
         if min_level > table_dt:
@@ -112,15 +128,16 @@ class MetricsComparser():
                     comments.append(comment)
 
         if strategy.lag_check:
-            if pd.isna(primary.max_datetime) or pd.isna(replica.max_datetime):
-                status = "ERROR"
-                comment = "Не вернулось отставание по таблицам"
-                logger.error("%s: %s", table_name, comment)
-                comments.append(comment)
-            else:
+            try:
                 lag_rule = self._check_tables_datetime(
                     primary, replica, rules.max_lag_seconds
                 )
+            except ValueError as error:
+                status = "ERROR"
+                comment = f"Ошибка дат для проверки отставания: {error}"
+                logger.error("%s: %s", table_name, comment)
+                comments.append(comment)
+            else:
                 if not lag_rule:
                     status = "ERROR"
                     comment = f"Отставание реплики превышает {rules.max_lag_seconds} секунд"
@@ -128,25 +145,33 @@ class MetricsComparser():
                     comments.append(comment)
 
         if strategy.last_update:
-            if not pd.isna(primary.update_datetime):
-                primary_update_rule = self._check_table_update(
-                    primary, rules.last_update_seconds
-                )
-                if not primary_update_rule:
+            checked_updates = 0
+            for label, source in (("Основная таблица", primary), ("Реплика", replica)):
+                if source.update_datetime is None or (
+                    pd.api.types.is_scalar(source.update_datetime) and pd.isna(source.update_datetime)
+                ):
+                    continue
+                checked_updates += 1
+                try:
+                    update_rule = self._check_table_update(source, rules.last_update_seconds)
+                except ValueError as error:
                     status = "ERROR"
-                    comment = f"Основная таблица не обновлялась последние {rules.last_update_seconds} секунд"
+                    comment = f"{label}: ошибка даты обновления: {error}"
                     logger.error("%s: %s", table_name, comment)
                     comments.append(comment)
+                else:
+                    if not update_rule:
+                        status = "ERROR"
+                        comment = f"{label} не обновлялась последние {rules.last_update_seconds} секунд"
+                        logger.error("%s: %s", table_name, comment)
+                        comments.append(comment)
 
-            if not pd.isna(primary.update_datetime):
-                update_rule = self._check_table_update(
-                    replica, rules.last_update_seconds
-                )
-                if not update_rule:
-                    status = "ERROR"
-                    comment = f"Реплика не обновлялась последние {rules.last_update_seconds} секунд"
-                    logger.error("%s: %s", table_name, comment)
-                    comments.append(comment)
+            if not checked_updates:
+                if status != "ERROR":
+                    status = "WARNING"
+                comment = f"Нет значений последнего обновления у таблиц {table_name}"
+                logger.warning("%s: %s", table_name, comment)
+                comments.append(comment)
 
         if not (strategy.row_count or strategy.lag_check or strategy.last_update):
             status = "WARNING"

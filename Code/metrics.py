@@ -55,8 +55,8 @@ class MetricCollector:
     Собирает метрики через существующие классы подключений из Code.db.
     """
     def __init__(self,
-        msq_conn: MySQLConn = None,
-        click_conn: ClickHouseConn = None):
+        msq_conn: MySQLConn | None = None,
+        click_conn: ClickHouseConn | None = None):
 
         self.mysql_conn = msq_conn
         self.clickhouse_conn = click_conn
@@ -70,13 +70,13 @@ class MetricCollector:
             return self._connections[connection_key]
 
         if source.type == "mysql":
-            if self.mysql_conn:
+            if self.mysql_conn is not None:
                 connection = self.mysql_conn
             else:
                 connection = MySQLConn()
 
         elif source.type == "clickhouse":
-            if self.clickhouse_conn:
+            if self.clickhouse_conn is not None:
                 connection = self.clickhouse_conn
             else:
                 connection = ClickHouseConn()
@@ -86,11 +86,20 @@ class MetricCollector:
         self._connections[connection_key] = connection
         return connection
 
-    def collect_source_metrics(self, source: SourceConfig) -> SourceMetrics:
-        connection = self._get_connection(source)
-        self._check_datetime_column_exists(source, connection)
+    def collect_source_metrics(self, source: SourceConfig,
+                               strategy: StrategyConfig | None = None) -> SourceMetrics:
 
-        query = build_metrics_query(source)
+        strategy = strategy if strategy is not None else StrategyConfig()
+        if strategy.lag_check and not source.datetime_column:
+            raise MetricCollectionError("datetime_column", "Не задана колонка для включённой проверки отставания")
+
+        query = build_metrics_query(source, strategy)
+        if query is None:
+            return SourceMetrics(source_type=source.type, database=source.database, table=source.table)
+
+        connection = self._get_connection(source)
+        if strategy.lag_check:
+            self._check_datetime_column_exists(source, connection)
         result = connection.query(query)
 
         if result is None:
@@ -115,7 +124,7 @@ class MetricCollector:
         for source_name in ("primary", "replica"):
             source = getattr(table, source_name)
             try:
-                sources[source_name] = self.collect_source_metrics(source)
+                sources[source_name] = self.collect_source_metrics(source, table.strategy)
             except MetricCollectionError as error:
                 raise MetricCollectionError(
                     f"{source_name}.{error.config_path}", error.message
@@ -159,7 +168,10 @@ class MetricCollector:
         return metrics
 
     def close_all(self) -> None:
+        """Закрывает только созданные коллектором подключения."""
         for connection in self._connections.values():
+            if connection is self.mysql_conn or connection is self.clickhouse_conn:
+                continue
             connection.close()
 
         self._connections.clear()

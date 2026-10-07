@@ -1,5 +1,5 @@
 from   Code.logger import create_logger
-from   Code.load_env import load_env
+# from   Code.load_env import load_env
 from   abc import ABC, abstractmethod
 import clickhouse_connect
 import sqlalchemy
@@ -16,7 +16,7 @@ import os
 Все параметры подключения считываются из .env файла.
 """
 
-load_env()
+# load_env()
 logger = create_logger()
 
 

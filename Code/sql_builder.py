@@ -1,5 +1,5 @@
 import re
-from Code.config import SourceConfig
+from Code.config import SourceConfig, StrategyConfig
 
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -22,19 +22,25 @@ def build_table_name(source: SourceConfig) -> str:
     return f"{quote_identifier(source.database)}.{quote_identifier(source.table)}"
 
 
-def build_metrics_query(source: SourceConfig) -> str:
+def build_metrics_query(source: SourceConfig, strategy: StrategyConfig | None = None) -> str | None:
     """
     Собирает SQL-запрос для получения метрик по одной таблице.
     """
-    metrics = ["COUNT(*) AS row_count"]
+    strategy = strategy if strategy is not None else StrategyConfig()
+    metrics = []
+    if strategy.row_count:
+        metrics.append("COUNT(*) AS row_count")
 
-    if source.datetime_column:
+    if strategy.lag_check and source.datetime_column:
         datetime_column = quote_identifier(source.datetime_column)
         metrics.append(f"MAX({datetime_column}) AS max_datetime")
 
-    if source.last_update_column:
+    if strategy.last_update and source.last_update_column:
         last_update_column = quote_identifier(source.last_update_column)
         metrics.append(f"MAX({last_update_column}) AS update_datetime")
+
+    if not metrics:
+        return None
 
     table_name = build_table_name(source)
     final_modifier = " FINAL" if source.type == "clickhouse" and source.final else ""
@@ -94,8 +100,8 @@ if __name__ == "__main__":
 
     for table in config.tables:
         print(f"-- {table.name}: primary")
-        print(build_metrics_query(table.primary))
+        print(build_metrics_query(table.primary, table.strategy))
         print()
         print(f"-- {table.name}: replica")
-        print(build_metrics_query(table.replica))
+        print(build_metrics_query(table.replica, table.strategy))
         print()

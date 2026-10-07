@@ -3,7 +3,7 @@ from   Code.logger import create_logger
 import os, sys
 
 logger = create_logger()
-REQUIRED_ENV_VARS = ['ROOT_DIR', 'CONFIG_PATH'] # Список обязательных переменных окружения
+REQUIRED_ENV_VARS = ['ROOT_DIR', 'CONFIG_PATH', 'CONFIG_NAME'] # Список обязательных переменных окружения
 
 def _check_env_vars(keys: list[str]) -> None:
     """
@@ -20,7 +20,7 @@ def _check_env_vars(keys: list[str]) -> None:
     Returns:
         None
     """
-    missing_or_empty = [k for k in keys if not os.getenv(k)]
+    missing_or_empty = [k for k in keys if not os.getenv(k, "").strip()]
     if missing_or_empty:
         logger.error(
             "Не заданы обязательные переменные окружения: %s. "

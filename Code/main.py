@@ -1,11 +1,10 @@
 """Один полный запуск мониторинга: конфиг, метрики, проверки, Excel."""
 from datetime import datetime
-from enum import nonmember
 from pathlib import Path
 import os
 import pandas as pd
 
-from Code.config import load_config
+from Code.config import load_config, get_config_path
 from Code.load_env import load_env
 from Code.logger import create_logger
 from Code.report import export_report
@@ -43,7 +42,7 @@ def _metrics_summary(metric, checked_at: datetime, ) -> str:
             lines.append(f"Отставание: {(p_date - r_date).total_seconds():.1f} сек.")
     if metric.strategy.last_update:
         for label, source in (("основной", primary), ("реплики", replica)):
-            if source is primary and pd.isna(source.update_datetime):
+            if pd.isna(source.update_datetime):
                 continue
             date_text, update_date = format_date(source.update_datetime)
             lines.append(f"Обновление {label}: {date_text}")
@@ -56,25 +55,21 @@ def _metrics_summary(metric, checked_at: datetime, ) -> str:
 def main(
         open_folder: bool = True,
         create_xlsx: bool = False,
-        mysql_conn: MySQLConn = None,
-        clickhouse_conn: ClickHouseConn = None
+        mysql_conn: MySQLConn | None = None,
+        clickhouse_conn: ClickHouseConn | None = None
         ) -> "Path | None":
     """
     Выполняет проверки и возвращает путь к новому отчёту.
-    CONFIG_PATH и OUTPUT_ берутся из окружения, загруженного из .env.
+    Пресет выбирается через CONFIG_PATH / CONFIG_NAME, отчёт — через OUTPUT_.
     """
-    load_env()
 
-    config_path = Path(os.path.expandvars(os.environ["CONFIG_PATH"])).resolve()
-    output_dir = Path(os.path.expandvars(os.environ["OUTPUT_"])).resolve()
+    config_path = get_config_path()
+    output_dir = None
+    if create_xlsx:
+        if not os.getenv("OUTPUT_", "").strip():
+            raise ValueError("\nНе задан обязательный параметр .env: OUTPUT_")
+        output_dir = Path(os.path.expandvars(os.environ["OUTPUT_"])).expanduser().resolve()
     config = load_config(config_path)
-
-    # Результаты сбора и ошибки сопоставляются по имени настройки таблицы.
-    names = set()
-    for index, table in enumerate(config.tables):
-        if table.name in names:
-            raise ValueError(f"\nYAML tables[{index}].name: повторяющееся имя {table.name}")
-        names.add(table.name)
 
     logger.info("Загружен конфиг %s. Таблиц: %s", config_path, len(config.tables))
     collector = MetricCollector(mysql_conn, clickhouse_conn)
@@ -133,6 +128,4 @@ def main(
 
 
 if __name__ == "__main__":
-    a = ClickHouseConn()
-    b = MySQLConn()
     main(create_xlsx=False)
