@@ -1,5 +1,5 @@
 from   Code.logger import create_logger
-# from   Code.load_env import load_env
+from   Code.load_env import load_env
 from   abc import ABC, abstractmethod
 import clickhouse_connect
 import sqlalchemy
@@ -16,9 +16,8 @@ import os
 Все параметры подключения считываются из .env файла.
 """
 
-# load_env()
 logger = create_logger()
-
+load_env()
 
 class DBcon(ABC):
     """
@@ -38,12 +37,12 @@ class DBcon(ABC):
         pass
 
     @abstractmethod
-    def query(self):
+    def query(self, qbody: str, params: dict[str, object] | None = None):
         """
         Выполняет SQL-запрос.
 
         Returns:
-            pd.DataFrame | None:
+            pd.DataFrame:
                 Результат выполнения запроса.
         """
         pass
@@ -118,7 +117,7 @@ class ClickHouseConn(DBcon):
                     'Нет необходимого ключа в .env: %s\nПодключение отменено',
                     self.prefix + key
                 )
-                return None
+                raise ValueError(f"Нет необходимого ключа окружения: {self.prefix + key}")
 
             self.__auth[key] = int(env_key) if key == 'PORT' else env_key
         try:
@@ -136,11 +135,11 @@ class ClickHouseConn(DBcon):
                 'Не удалось создать соединение с %s\n%s\nПодключение отменено\n',
                  self.prefix[:-1],Ex
             )
-            return None
+            raise ConnectionError(f"Не удалось подключиться к {self.prefix[:-1]}: {Ex}") from Ex
     def query(self,
               qbody: str = 'SELECT 1',
               params: dict[str, object] | None = None
-              ) -> pd.DataFrame | None:
+              ) -> pd.DataFrame:
         """
         Выполняет SQL-запрос к ClickHouse.
 
@@ -153,7 +152,7 @@ class ClickHouseConn(DBcon):
                 в qbody.
 
         Returns:
-            pd.DataFrame | None:
+            pd.DataFrame:
                 Результат запроса.
         """
         if self.conn is None:
@@ -161,7 +160,7 @@ class ClickHouseConn(DBcon):
                 'Нет созданного соединения с %s\nОтмена запроса',
                  self.prefix[:-1]
             )
-            return None
+            raise ConnectionError(f"Нет активного соединения с {self.prefix[:-1]}")
         try:
             # query = self.conn.query_df(query = qbody)
             query = self.conn.query_df(
@@ -170,8 +169,7 @@ class ClickHouseConn(DBcon):
             )
             # logger.info('Shape: %s', query.shape)
         except Exception as Ex:
-            logger.error('Ошибка выполнения запроса!\n%s\n', Ex)
-            return None
+            raise RuntimeError(f"Ошибка запроса к {self.prefix[:-1]}: {Ex}") from Ex
         return query
 
     def close(self):
@@ -260,7 +258,7 @@ class MySQLConn(DBcon):
                     'Нет необходимого ключа в .env: %s\nПодключение отменено',
                     self.prefix + key
                 )
-                return None
+                raise ValueError(f"Нет необходимого ключа окружения: {self.prefix + key}")
 
             self.__auth[key] = int(env_key) if key == 'PORT' else env_key
         try:
@@ -283,12 +281,12 @@ class MySQLConn(DBcon):
                 'Не удалось создать соединение с %s\n%s\nПодключение отменено\n',
                  self.prefix[:-1],Ex
             )
-            return None
+            raise ConnectionError(f"Не удалось подключиться к {self.prefix[:-1]}: {Ex}") from Ex
 
     def query(self,
               qbody: str = 'SELECT 1',
               params: dict[str, object] | None = None
-              ) -> pd.DataFrame | None:
+              ) -> pd.DataFrame:
         """
         Выполняет SQL-запрос к MySQL.
 
@@ -301,7 +299,7 @@ class MySQLConn(DBcon):
                 в qbody.
 
         Returns:
-            pd.DataFrame | None:
+            pd.DataFrame:
                 Результат выполнения запроса.
         """
         if self.engine is None:
@@ -309,13 +307,12 @@ class MySQLConn(DBcon):
                 'Нет созданного соединения с %s\nОтмена запроса',
                  self.prefix[:-1]
             )
-            return None
+            raise ConnectionError(f"Нет активного соединения с {self.prefix[:-1]}")
         try:
             query = pd.read_sql(sql = sqlalchemy.text(qbody), con = self.engine, params=params or {})
             # logger.info('Shape: %s', query.shape)
         except Exception as Ex:
-            logger.error('Ошибка выполнения запроса!\n%s\n', Ex)
-            return None
+            raise RuntimeError(f"Ошибка запроса к {self.prefix[:-1]}: {Ex}") from Ex
         return query
 
     def close(self):

@@ -1,6 +1,7 @@
 from   dotenv import load_dotenv
 from   Code.logger import create_logger
-import os, sys
+import os
+from pathlib import Path
 
 logger = create_logger()
 REQUIRED_ENV_VARS = ['ROOT_DIR', 'CONFIG_PATH', 'CONFIG_NAME'] # Список обязательных переменных окружения
@@ -27,7 +28,7 @@ def _check_env_vars(keys: list[str]) -> None:
             "Проверь .env файл в корне проекта или запусти ~check_env.py",
             missing_or_empty
         )
-        sys.exit(1)
+        raise ValueError(f"Не заданы переменные окружения: {missing_or_empty}")
         # raise EnvironmentError(f"Пустые или отсутствующие переменные .env: {missing_or_empty}")
 
 
@@ -42,7 +43,7 @@ def load_env() -> None:
     Returns:
         None
     """
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     _check_env_vars(REQUIRED_ENV_VARS)
     root_dir = os.getenv('ROOT_DIR')
     os.chdir(root_dir)

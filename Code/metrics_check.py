@@ -1,9 +1,10 @@
 import pandas as pd
-import time
+import re
+from datetime import datetime
 from numbers import Number
 
 from typing import Literal, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field
 
 
 from Code.metrics import SourceMetrics, TableMetrics
@@ -16,11 +17,21 @@ class CheckResult(BaseModel):
     table_name: str
     status: Literal["OK", "WARNING", "ERROR"]
     comment: str
+    checked_at: datetime = Field(default_factory=lambda: datetime.now())
+    primary_collected_at: datetime | None = None
+    replica_collected_at: datetime | None = None
+    lag_seconds: float | None = None
+    primary_update_age_seconds: float | None = None
+    replica_update_age_seconds: float | None = None
     primary_row_count: int | None = None
     replica_row_count: int | None = None
     row_diff: int | None = None
     primary_max_datetime: Any = None
     replica_max_datetime: Any = None
+    primary_max_datetime_raw: Any = None
+    replica_max_datetime_raw: Any = None
+    primary_last_update_raw: Any = None
+    replica_last_update_raw: Any = None
     primary_last_update: Any = None
     replica_last_update: Any = None
 
@@ -33,18 +44,27 @@ class MetricsComparser():
         self.metrics = metrics
 
     @staticmethod
-    def _normalize_datetime(value) -> pd.Timestamp:
-        """Даты без часового пояса считаются UTC. Числовой формат не угадываем."""
+    def _parse_datetime(value) -> pd.Timestamp:
+        """Дату с поясом переводит в системное время, дату без пояса оставляет как есть."""
         if isinstance(value, Number):
             raise ValueError("Числовая дата не поддерживается: передайте datetime или строку даты")
+        if isinstance(value, str):
+            # ДД.ММ.ГГГГ приводим к ISO, сохраняя время и смещение.
+            value = re.sub(
+                r"^(\d{1,2})\.(\d{1,2})\.(\d{4})(?=$|[ T])",
+                lambda match: f"{match[3]}-{match[2].zfill(2)}-{match[1].zfill(2)}",
+                value.strip(),
+            )
         try:
-            value = pd.to_datetime(value, utc=True, errors="coerce")
+            value = pd.to_datetime(value, errors="coerce")
         except (TypeError, ValueError, OverflowError) as error:
             raise ValueError("Некорректная дата") from error
         if not isinstance(value, pd.Timestamp) or pd.isna(value):
             raise ValueError("Дата отсутствует или имеет некорректный формат")
-        # if value.timestamp() > time.time():
-        #     raise ValueError("Дата находится в будущем")
+        if value.tzinfo is not None:
+            # Системный пояс для конкретной даты, включая сезонное смещение.
+            local_zone = value.to_pydatetime().astimezone().tzinfo
+            value = value.tz_convert(local_zone).tz_localize(None)
         return value
 
     @staticmethod
@@ -64,39 +84,6 @@ class MetricsComparser():
         else:
             return True
 
-    @staticmethod
-    def _check_tables_datetime(
-            primary:SourceMetrics,
-            replica:SourceMetrics,
-            max_lag_seconds: int
-        ):
-        """
-        Проверка мэтча по общему столбцу даты (max_lag_seconds)
-        """
-        primary_dt = MetricsComparser._normalize_datetime(primary.max_datetime)
-        replica_dt = MetricsComparser._normalize_datetime(replica.max_datetime)
-        lag = (primary_dt - replica_dt).total_seconds()
-        if lag > max_lag_seconds:
-            return False
-        else:
-            return True
-
-    @staticmethod
-    def _check_table_update(
-            table: SourceMetrics,
-            last_update_seconds: int
-        ):
-        """
-        Проверка на обновление таблицы за последние n-секунд (last_update_seconds)
-        """
-        table_dt = MetricsComparser._normalize_datetime(table.update_datetime).timestamp()
-        now_sec = time.time()
-        min_level = now_sec - last_update_seconds
-        if min_level > table_dt:
-            return False
-        else:
-            return True
-    
     def compare_metrics(self, table_metrics: TableMetrics) -> CheckResult:
         """
         Проверяет одну пару таблиц по включённым стратегиям.
@@ -111,6 +98,9 @@ class MetricsComparser():
         comments = []
         status = "OK"
         row_diff = None
+        lag_seconds = None
+        dates = {}
+        ages = {}
 
         if strategy.row_count:
             if primary.row_count is None or replica.row_count is None:
@@ -129,9 +119,10 @@ class MetricsComparser():
 
         if strategy.lag_check:
             try:
-                lag_rule = self._check_tables_datetime(
-                    primary, replica, rules.max_lag_seconds
-                )
+                dates["primary_max_datetime"] = self._parse_datetime(primary.max_datetime)
+                dates["replica_max_datetime"] = self._parse_datetime(replica.max_datetime)
+                lag_seconds = (dates["primary_max_datetime"] - dates["replica_max_datetime"]).total_seconds()
+                lag_rule = lag_seconds <= rules.max_lag_seconds
             except ValueError as error:
                 status = "ERROR"
                 comment = f"Ошибка дат для проверки отставания: {error}"
@@ -146,14 +137,18 @@ class MetricsComparser():
 
         if strategy.last_update:
             checked_updates = 0
-            for label, source in (("Основная таблица", primary), ("Реплика", replica)):
+            for key, label, source in (("primary", "Основная таблица", primary), ("replica", "Реплика", replica)):
                 if source.update_datetime is None or (
                     pd.api.types.is_scalar(source.update_datetime) and pd.isna(source.update_datetime)
                 ):
                     continue
                 checked_updates += 1
                 try:
-                    update_rule = self._check_table_update(source, rules.last_update_seconds)
+                    update_date = self._parse_datetime(source.update_datetime)
+                    dates[f"{key}_last_update"] = update_date
+                    age = (self._parse_datetime(source.collected_at) - update_date).total_seconds()
+                    ages[f"{key}_update_age_seconds"] = age
+                    update_rule = age <= rules.last_update_seconds
                 except ValueError as error:
                     status = "ERROR"
                     comment = f"{label}: ошибка даты обновления: {error}"
@@ -190,10 +185,15 @@ class MetricsComparser():
             primary_row_count=primary.row_count,
             replica_row_count=replica.row_count,
             row_diff=row_diff,
-            primary_max_datetime=primary.max_datetime,
-            replica_max_datetime=replica.max_datetime,
-            primary_last_update=primary.update_datetime,
-            replica_last_update=replica.update_datetime
+            primary_collected_at=primary.collected_at,
+            replica_collected_at=replica.collected_at,
+            lag_seconds=lag_seconds,
+            primary_max_datetime_raw=primary.max_datetime,
+            replica_max_datetime_raw=replica.max_datetime,
+            primary_last_update_raw=primary.update_datetime,
+            replica_last_update_raw=replica.update_datetime,
+            **dates,
+            **ages
         )
 
     
@@ -212,7 +212,9 @@ class MetricsComparser():
 if __name__ == "__main__":
     from Code.config import load_config
     from Code.metrics import MetricCollector
+    from Code.load_env import load_env
 
+    load_env()
     config = load_config()
     collector = MetricCollector()
 

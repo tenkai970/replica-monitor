@@ -1,13 +1,13 @@
-from typing import Any, Literal
+from typing import Any
+from datetime import datetime
 
-import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from Code.config import SourceConfig, TableConfig,StrategyConfig,RulesConfig,load_config
 from Code.db import ClickHouseConn, DBcon, MySQLConn
 from Code.logger import create_logger
 from Code.sql_builder import build_column_exists_query, build_metrics_query
-
+import pandas as pd
 
 logger = create_logger(__name__)
 
@@ -31,6 +31,9 @@ class SourceMetrics(BaseModel):
     source_type: str
     database: str
     table: str
+    collected_at: datetime = Field(
+        default_factory=lambda: datetime.now()
+    )
     row_count: int | None = None
     max_datetime: Any = None
     update_datetime: Any = None
@@ -100,6 +103,7 @@ class MetricCollector:
         connection = self._get_connection(source)
         if strategy.lag_check:
             self._check_datetime_column_exists(source, connection)
+        collected_at = datetime.now()
         result = connection.query(query)
 
         if result is None:
@@ -114,6 +118,7 @@ class MetricCollector:
             source_type=source.type,
             database=source.database,
             table=source.table,
+            collected_at=collected_at,
             row_count=row.get("row_count"),
             max_datetime=row.get("max_datetime"),
             update_datetime=row.get("update_datetime")
@@ -204,6 +209,9 @@ class MetricCollector:
 
 
 if __name__ == "__main__":
+    from Code.load_env import load_env
+
+    load_env()
     config = load_config()
     collector = MetricCollector()
 

@@ -19,7 +19,6 @@ class SourceConfig(BaseModel):
     datetime_column: str | None = None
     last_update_column: str | None = None
     final: bool = True
-
     @model_validator(mode='after')
     def normalize_final_by_source_type(self):
         if self.type != "clickhouse":
