@@ -33,11 +33,21 @@ def build_metrics_query(source: SourceConfig, strategy: StrategyConfig | None = 
 
     if strategy.lag_check and source.datetime_column:
         datetime_column = quote_identifier(source.datetime_column)
-        metrics.append(f"MAX({datetime_column}) AS max_datetime")
+        if source.type == "mysql":
+            metrics.append(f"MAX({datetime_column}) AS max_datetime")
+        if source.type == "clickhouse":
+            metrics.append(
+                f"MAX(formatDateTime({datetime_column}, '%Y-%m-%d %H:%m:%S')) AS max_datetime"
+                )
 
     if strategy.last_update and source.last_update_column:
         last_update_column = quote_identifier(source.last_update_column)
-        metrics.append(f"MAX({last_update_column}) AS update_datetime")
+        if source.type == "mysql":
+            metrics.append(f"MAX({last_update_column}) AS update_datetime")
+        if source.type == "clickhouse":
+            metrics.append(
+                f"MAX(formatDateTime({last_update_column}, '%Y-%m-%d %H:%m:%S')) AS update_datetime"
+                )
 
     if not metrics:
         return None
