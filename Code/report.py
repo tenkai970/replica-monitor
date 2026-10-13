@@ -53,7 +53,7 @@ COLUMN_TITLES = {
 STATUS_COLORS = {"ERROR": "F8A9A9", "WARNING": "FFE699", "OK": "C6EFCE"}
 
 COLUMN_WIDTHS = {
-    "checked_at": 32, "primary": 30, "replica": 34, "status": 12,
+    "checked_at": 32, "primary": 40, "replica": 45, "status": 12,
     "comment": 55, "metrics": 60, "checks": 43,
 }
 
