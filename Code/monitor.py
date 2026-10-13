@@ -8,7 +8,7 @@ from Code.load_env import load_env
 from Code.logger import create_logger
 from Code.report import export_report
 
-from Code.metrics import MetricCollector
+from Code.metrics import MetricCollector, MetricCollectionError
 from Code.metrics_check import MetricsComparser, CheckResult
 
 from Code.db import ClickHouseConn, MySQLConn
@@ -52,14 +52,16 @@ def run_checks(
         open_folder: bool = True,
         create_xlsx: bool = False,
         mysql_conn: MySQLConn | None = None,
-        clickhouse_conn: ClickHouseConn | None = None
-        ) -> RunResult:
+        clickhouse_conn: ClickHouseConn | None = None,
+        conf_path: str = None,
+        file_name: str | None = None
+        ) -> None:
     """
     Возвращает результаты проверок, строки отчёта и необязательный путь Excel.
     Пресет выбирается через CONFIG_PATH / CONFIG_NAME, отчёт — через OUTPUT_.
     """
 
-    config_path = get_config_path()
+    config_path = conf_path if conf_path is not None else get_config_path()
     output_dir = None
     if create_xlsx:
         if not os.getenv("OUTPUT_", "").strip():
@@ -69,43 +71,44 @@ def run_checks(
 
     logger.info("Загружен конфиг %s. Таблиц: %s", config_path, len(config.tables))
     collector = MetricCollector(mysql_conn, clickhouse_conn)
-    try:
-        metrics = collector.collect_all(config.tables)
-    finally:
-        collector.close_all()
-
-    metrics_by_name = {metric.table_name: metric for metric in metrics}
-    comparser = MetricsComparser(metrics)
+    comparser = MetricsComparser([])
     rows = []
     results = []
 
-    for index, table in enumerate(config.tables):
-        metric = metrics_by_name.get(table.name)
-        if metric is None:
-            comment = collector.errors.get(table.name, f"YAML tables[{index}]: метрики таблицы не получены")
-            result = CheckResult(table_name=table.name, status="ERROR", comment=comment)
-        else:
+    try:
+        for index, table in enumerate(config.tables):
             try:
+                metric = collector.collect_table_metrics(table)
                 result = comparser.compare_metrics(metric)
             except Exception as error:
-                comment = f"YAML tables[{index}]: ошибка проверки: {str(error).strip()}"
+                location = f"tables[{index}]"
+                if isinstance(error, MetricCollectionError):
+                    location += f".{error.config_path}"
+                    message = error.message
+                else:
+                    message = str(error).strip()
+                comment = f"YAML {location}: {message}"
                 logger.error("%s: %s", table.name, comment)
                 result = CheckResult(table_name=table.name, status="ERROR", comment=comment)
+            logger.info("[%s/%s] %s: %s", index + 1, len(config.tables), table.name, result.status)
 
-        results.append(result)
-        rows.append({
-            "checked_at": result.checked_at,
-            "table_name": table.name,
-            "primary_database": table.primary.database,
-            "primary_table": table.primary.table,
-            "replica_database": table.replica.database,
-            "replica_table": table.replica.table,
-            "status": result.status,
-            "comment": result.comment,
-            "metrics": _metrics_summary(result, table.strategy),
-            **table.strategy.model_dump(),
-            **table.rules.model_dump(),
-        })
+            results.append(result)
+            rows.append({
+                "checked_at": result.checked_at,
+                "table_name": table.name,
+                "primary_database": table.primary.database,
+                "primary_table": table.primary.table,
+                "replica_database": table.replica.database,
+                "replica_table": table.replica.table,
+                "status": result.status,
+                "comment": result.comment,
+                "metrics": _metrics_summary(result, table.strategy),
+                **table.strategy.model_dump(),
+                **table.rules.model_dump(),
+            })
+    
+    finally:
+        collector.close_all()
 
     logger.info(
         "Результаты: OK — %s, WARNING — %s, ERROR — %s",
@@ -113,8 +116,10 @@ def run_checks(
         sum(row["status"] == "WARNING" for row in rows),
         sum(row["status"] == "ERROR" for row in rows),
     )
-    report_path = export_report(rows, output_dir, open_folder=open_folder) if create_xlsx else None
-    return RunResult(results=results, rows=rows, report_path=report_path)
+    if create_xlsx:
+        report_path = export_report(rows, output_dir, open_folder=open_folder, file_name=file_name)
+        RunResult(results=results, rows=rows, report_path=report_path)
+    return None
 
 
 if __name__ == "__main__":

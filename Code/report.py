@@ -98,6 +98,7 @@ def export_report(
         rows: list[dict[str, Any]],
         output_dir: str | Path,
         open_folder: bool = True,
+        file_name: str | None = None,
     ) -> Path:
     """
     Сохраняет новый Excel и возвращает полный путь к нему.
@@ -119,6 +120,13 @@ def export_report(
     if not str(output_dir).strip():
         raise ValueError("\nНе задана папка для экспорта отчёта")
     output_dir = Path(os.path.expandvars(str(output_dir))).expanduser().resolve()
+
+    if file_name is not None:
+        file_name = file_name.strip()
+        if file_name.lower().endswith(".xlsx"):
+            file_name = file_name[:-5]
+        if not file_name or file_name in (".", "..") or any(c in file_name for c in '<>:"/\\|?*'):
+            raise ValueError("file_name должен содержать имя файла без пути")
 
     for index, row in enumerate(rows):
         for field in ("table_name", "status", "comment"):
@@ -181,7 +189,8 @@ def export_report(
     sheet.auto_filter.ref = sheet.dimensions
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"replica_monitor_{datetime.now():%Y-%m-%d_%H-%M-%S-%f}"
+    timestamp = f'_{datetime.now():%Y-%m-%d_%H-%M-%S-%f}'
+    filename = file_name + timestamp if file_name is not None else f"replica_monitor{timestamp}"
     output_path = output_dir / f"{filename}.xlsx"
     suffix = 0
     while True:
