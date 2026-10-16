@@ -51,9 +51,9 @@ def _metrics_summary(result: CheckResult, strategy) -> str:
 def run_checks(
         open_folder: bool = True,
         create_xlsx: bool = False,
+        conf_path: str = None,
         mysql_conn: MySQLConn | None = None,
         clickhouse_conn: ClickHouseConn | None = None,
-        conf_path: str = None,
         file_name: str | None = None
         ) -> None:
     """
@@ -74,6 +74,7 @@ def run_checks(
     comparser = MetricsComparser([])
     rows = []
     results = []
+    connection_failed = False
 
     try:
         for index, table in enumerate(config.tables):
@@ -81,6 +82,8 @@ def run_checks(
                 metric = collector.collect_table_metrics(table)
                 result = comparser.compare_metrics(metric)
             except Exception as error:
+                if isinstance(error, ConnectionError):
+                    connection_failed = True
                 location = f"tables[{index}]"
                 if isinstance(error, MetricCollectionError):
                     location += f".{error.config_path}"
@@ -116,9 +119,15 @@ def run_checks(
         sum(row["status"] == "WARNING" for row in rows),
         sum(row["status"] == "ERROR" for row in rows),
     )
-    if create_xlsx:
-        report_path = export_report(rows, output_dir, open_folder=open_folder, file_name=file_name)
-        RunResult(results=results, rows=rows, report_path=report_path)
+    status_order = {"ERROR": 0, "WARNING": 1, "OK": 2}
+    rows.sort(key=lambda row: status_order[row["status"]])
+
+    if create_xlsx and connection_failed:
+        logger.warning("Excel не создан: не удалось подключиться к одной или нескольким базам данных")
+    elif create_xlsx:
+        export_report(rows, output_dir, open_folder=open_folder, file_name=file_name)
+        # report_path =
+        # RunResult(results=results, rows=rows, report_path=report_path)
     return None
 
 

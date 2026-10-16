@@ -104,7 +104,7 @@ tables:
 | `table` | Имя таблицы |
 | `datetime_column` | Колонка максимальной даты для проверки отставания |
 | `last_update_column` | Колонка даты записи/обновления для проверки свежести |
-| `final` | Добавляет `FINAL` для ClickHouse; по умолчанию `true`, для MySQL `false` |
+| `final` | Добавляет `FINAL` для ClickHouse; по умолчанию `true`, для MySQL принудительно `false` |
 
 Неиспользуемые колонки дат можно опустить или указать `null`. Для включённого `lag_check` колонка `datetime_column` нужна с обеих сторон. SQL-идентификаторы допускают латинские буквы, цифры и подчёркивания, но не могут начинаться с цифры.
 
@@ -118,9 +118,9 @@ tables:
 | `name` | Строка, уникальная в пресете | Нет | Ошибка |
 | `primary`, `replica` | Объект описания источника | Нет | Ошибка |
 | `primary.type`, `replica.type` | `mysql` или `clickhouse` | Нет | Ошибка |
-| `database`, `table` | Строка с именем базы или таблицы | Нет | Ошибка |
-| `datetime_column`, `last_update_column` | Строка с именем колонки или `null` | Да | `null` |
-| `final` | Флаг: `true` / `false` или `1` / `0` | Нет | `true`; для MySQL нормализуется в `false` |
+| `database`, `table` у источника | Строка с именем базы или таблицы | Нет | Ошибка |
+| `datetime_column`, `last_update_column` у источника | Строка с именем колонки или `null` | Да | `null` |
+| `final` у источника | Флаг: `true` / `false` или `1` / `0` | Нет | `true`; для MySQL нормализуется в `false` |
 | `strategy` | Объект флагов | Нет | Включён только `row_count` |
 | `strategy.row_count` | Флаг: `true` / `false` или `1` / `0` | Нет | `true` |
 | `strategy.lag_check`, `strategy.last_update` | Флаг: `true` / `false` или `1` / `0` | Нет | `false` |
@@ -184,8 +184,6 @@ rules:
 
 ## Использование из Python или ноутбука
 
-Воспользуйтесь `Start/Start_from_jupiter.ipynb` или используйте вариант представленный ниже
-
 Корень проекта должен быть доступен для импорта `Code`.
 
 ```python
@@ -193,12 +191,7 @@ from Code.load_env import load_env
 from Code.monitor import run_checks
 
 load_env()
-run = run_checks(create_xlsx=True, open_folder=False)
-
-for result in run.results:
-    print(result.table_name, result.status, result.comment)
-
-print(run.report_path)
+run_checks(create_xlsx=True, open_folder=False)
 ```
 
 `run_checks()` сам не вызывает `load_env()`: окружение подготавливает вызывающий код.
@@ -210,13 +203,9 @@ print(run.report_path)
 | `mysql_conn` | `None` | Готовый объект `MySQLConn` |
 | `clickhouse_conn` | `None` | Готовый объект `ClickHouseConn` |
 
-Возвращается `RunResult`:
+`run_checks()` ничего не возвращает. Результаты по каждой таблице выводятся в лог, а при `create_xlsx=True` сохраняются в Excel. `file_name` задаёт необязательное имя файла отчёта.
 
-- `results`: список `CheckResult`, включая ошибки сбора;
-- `rows`: готовые словари строк отчёта;
-- `report_path`: путь `Path` к Excel или `None` без экспорта.
-
-`CheckResult` содержит статус, комментарий, разницу строк, отставание, возраст обновлений, время сбора каждой стороны, разобранные и исходные даты. При недоступности метрики соответствующие значения могут быть `None`.
+`CheckResult` используется внутри запуска и содержит статус, комментарий, разницу строк, отставание, возраст обновлений, время сбора каждой стороны, разобранные и исходные даты. При недоступности метрики соответствующие значения могут быть `None`.
 
 ### Переиспользование подключений
 
@@ -228,7 +217,7 @@ mysql = MySQLConn()
 try:
     clickhouse = ClickHouseConn()
     try:
-        run = run_checks(mysql_conn=mysql, clickhouse_conn=clickhouse)
+        run_checks(mysql_conn=mysql, clickhouse_conn=clickhouse)
     finally:
         clickhouse.close()
 finally:
@@ -272,7 +261,7 @@ Code/
   sql_builder.py        SQL для включённых метрик
   metrics.py            Сбор метрик и управление подключениями
   metrics_check.py      Проверки и CheckResult
-  monitor.py            Последовательность запуска и RunResult
+  monitor.py            Последовательность запуска и подготовка строк отчёта
   report.py             Excel-экспорт
   logger.py             Консольное логирование
 tests/                  Проверки с подставными подключениями
@@ -292,4 +281,4 @@ python -m unittest discover -s tests -v
 
 Совпадение количества строк и максимальных дат не доказывает равенство содержимого таблиц. Источники читаются последовательно, поэтому изменения между запросами могут давать временную разницу. `COUNT`, `MAX` и особенно `FINAL` могут быть затратными на больших таблицах; включайте только необходимые проверки.
 
-Программа выполняет один проход. Для регулярных запусков используйте внешний планировщик. Статусы таблиц находятся в `RunResult` и отчёте: корневой скрипт не устанавливает отдельный ненулевой код завершения при статусе `ERROR` таблицы.
+Программа выполняет один проход. Для регулярных запусков используйте внешний планировщик. Статусы таблиц выводятся в лог и Excel-отчёт. Корневой скрипт не устанавливает отдельный ненулевой код завершения при статусе `ERROR` таблицы.
