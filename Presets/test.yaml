@@ -1,0 +1,23 @@
+tables:
+  - name: test
+    primary:
+      type: mysql
+      database: mysql_db
+      table: original
+      datetime_column: date
+      last_update_column: null
+    replica:
+      type: clickhouse
+      database: click_db
+      table: replica
+      datetime_column: date
+      last_update_column: null
+      final: 1
+    strategy:
+      row_count: 1
+      lag_check: 0
+      last_update: 0
+    rules:
+      max_row_diff: 20
+      max_lag_seconds: 3600
+      last_update_seconds: 86400

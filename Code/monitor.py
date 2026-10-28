@@ -120,6 +120,7 @@ def run_checks(
         sum(row["status"] == "ERROR" for row in rows),
     )
     status_order = {"ERROR": 0, "WARNING": 1, "OK": 2}
+    rows.sort(key=lambda row: row["comment"], reverse=True)
     rows.sort(key=lambda row: status_order[row["status"]])
 
     if create_xlsx and connection_failed:

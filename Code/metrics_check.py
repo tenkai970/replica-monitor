@@ -72,17 +72,20 @@ class MetricsComparser():
             primary:SourceMetrics,
             replica:SourceMetrics,
             max_row_diff: int
-        ):
+        ) -> tuple[bool, str]:
         """
         Проверка мэтча строк реплики и оригинала (max_row_diff)
         """
         replica_rows = replica.row_count
         primary_rows = primary.row_count
         diff = abs(replica_rows - primary_rows)
-        if diff > max_row_diff:
-            return False
+        replica_overflow = primary_rows < replica_rows
+        if   diff > max_row_diff and replica_overflow:
+            return False, "WARNING"
+        elif diff > max_row_diff and not replica_overflow:
+            return False, "ERROR"
         else:
-            return True
+            return True, "OK"
 
     def compare_metrics(self, table_metrics: TableMetrics) -> CheckResult:
         """
@@ -110,11 +113,14 @@ class MetricsComparser():
                 comments.append(comment)
             else:
                 row_diff = abs(primary.row_count - replica.row_count)
-                rows_rule = self._check_rows(primary, replica, rules.max_row_diff)
-                if not rows_rule:
-                    status = "ERROR"
-                    comment = f"Разница в количестве строк {row_diff} превышает {rules.max_row_diff}"
+                rows_rule, status = self._check_rows(primary, replica, rules.max_row_diff)
+                if not rows_rule and status == "ERROR":
+                    comment = f"Разница в количестве строк с оригиналом {row_diff} превышает {rules.max_row_diff}"
                     logger.error("%s: %s", table_name, comment)
+                    comments.append(comment)
+                elif not rows_rule and status == "WARNING":
+                    comment = f"Разница в количестве строк с репликой {row_diff} превышает {rules.max_row_diff}"
+                    logger.warning("%s: %s", table_name, comment)
                     comments.append(comment)
 
         if strategy.lag_check:
